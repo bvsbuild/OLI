@@ -1,9 +1,13 @@
-/* 102025.11.2.2 DPO Overlay
+/* 102025.11.2.3 DPO Overlay
  * Bottom sheet by default, header hidden, no auto-open on direct URLs.
  * GA4 page view on open & close (UA fallback).
  * Vanilla JS (no jQuery, no external deps).
  *
  * Changelog
+ * 102025.11.2.3
+ * - Scroll handoff refinement: detect the pin state via article.scrollTop vs the sticky threshold instead of viewport
+ *   geometry so the first wheel/touch inside .dpo-content always advances the outer card. Prevents premature inner
+ *   scrolling if the initial gesture starts over the content block. Minimal math tweak only.
  * 102025.11.2.2
  * - Fix zero-scroll regression: make .dpo-article the outer scroll container (height:100%; overflow:auto; -webkit-overflow-scrolling:touch).
  *   Also fix specificity so the pinned .dpo-hero + .dpo-content keeps overflow:auto by enforcing it and preventing base .dpo-content
@@ -226,8 +230,8 @@
 
     overlay = document.createElement('div');
     overlay.id = 'dpo-overlay';
-    overlay.setAttribute('data-version','102025.11.2.2');
-    try{ console.debug('[DPO] version 102025.11.2.2 loaded'); }catch(e){}
+    overlay.setAttribute('data-version','102025.11.2.3');
+    try{ console.debug('[DPO] version 102025.11.2.3 loaded'); }catch(e){}
     overlay.className = 'dpo dpo-hidden' + (USE_SHEET ? ' dpo--sheet' : '') + (HIDE_HEADER ? ' dpo--no-header' : '') + ' dpo--close-in-hero';
     overlay.setAttribute('aria-hidden', 'true');
     overlay.innerHTML = `
@@ -500,8 +504,8 @@
     if (!card || !article || !content) return;
 
     const epsilon = 0.5; // geometry slop
-    function pinTopPx(){ return card.getBoundingClientRect().top + PIN_OFFSET; }
-    function isPinned(){ return content.getBoundingClientRect().top <= pinTopPx() + epsilon; }
+    function stickyThreshold(){ return Math.max(0, content.offsetTop - PIN_OFFSET); }
+    function isPinned(){ return article.scrollTop >= stickyThreshold() - epsilon; }
     function redirect(dy){ article.scrollTop += dy; }
 
     // Wheel: desktop
