@@ -1,25 +1,11 @@
-/* 102025.11.2.3 DPO Overlay
+/* 102025.11.2 DPO Overlay
  * Bottom sheet by default, header hidden, no auto-open on direct URLs.
- * GA4 page view on open & close (UA fallback).
+ * GA4 page_view on open & close (UA fallback).
  * Vanilla JS (no jQuery, no external deps).
  *
  * Changelog
- * 102025.11.2.3
- * - Scroll handoff refinement: detect the pin state via article.scrollTop vs the sticky threshold instead of viewport
- *   geometry so the first wheel/touch inside .dpo-content always advances the outer card. Prevents premature inner
- *   scrolling if the initial gesture starts over the content block. Minimal math tweak only.
- * 102025.11.2.2
- * - Fix zero-scroll regression: make .dpo-article the outer scroll container (height:100%; overflow:auto; -webkit-overflow-scrolling:touch).
- *   Also fix specificity so the pinned .dpo-hero + .dpo-content keeps overflow:auto by enforcing it and preventing base .dpo-content
- *   from overriding. No structural changes.
-  * 102025.11.2.1
- * - Scroll initiation handoff: wheel/touch over .dpo-content **before pin** now forwards to the outer article so the whole
- *   card rides over the hero. After pin, inner content scrolls; upward scroll at top returns control to the outer scroller.
- *   Minimal JS; no layout changes.
- * - Added small CSS overscroll-behavior-y: contain on article/content to reduce bounce/scroll chaining.
- * - Version stamp bumped to 102025.11.2.1 for verification.
-  * 102025.11.2
- * - Hero center-crop (CSS-only): use object-fit:cover and object-position:center with a tunable height var
+ * 102025.11.2
+ * - Hero center-crop (CSS only): use object-fit:cover and object-position:center with a tunable height var
  *   (dpo-hero-h). This keeps the hero image centered vertically while sticky, with clean rounded corners.
  * - Version stamp bumped to 102025.11.2 for verification.
  * 102025.11.1
@@ -46,7 +32,7 @@
  * 102025.9
  * - Step 2: On scroll, the content card rides up over the hero. Implementation: outer scroller is the
  *   article; the content card has overflow:visible so it moves as a single block and visually covers the hero.
- *   (Pin + internal scrolling come in steps 3 4.)
+ *   (Pin + internal scrolling come in steps 3–4.)
  * 102025.8
  * - Unwired the old pull-up script (no runtime scroll coupling).
  * - Step 1 of new behavior: on load, content card overlaps hero by 20px.
@@ -63,10 +49,11 @@
  * 102025.1
  * - JS: call wirePullUp() on init so sheet scrolling is fully wired.
  * - No API shape changes.
+ */
 
-
- * Tweaks (you can adjust these quickly):
- * - Hero height: set #dpo-overlay{dpo-hero-h: 60vh } (and media-query override). Use px or vh.
+/*
+Tweaks (you can adjust these quickly):
+ * - Hero height: set #dpo-overlay{ --dpo-hero-h: 60vh } (and media-query override). Use px or vh.
  * - Hero crop focus: .dpo-hero img { object-position:center } (e.g., 'center 40%').
  * - Pin offset: change .dpo-content { top:30px } and update the JS PIN_OFFSET constant.
  * - Card max height when pinned: .dpo-content { max-height: calc(90dvh - 30px - 12px) }.
@@ -83,7 +70,6 @@
   const USE_SHEET = true;                            // default sheet layout
   const HIDE_HEADER = true;                          // header hidden by default
   const AUTO_OPEN_ON_DIRECT = false;                 // per your choice
-  const PIN_OFFSET = 30;                             // must match CSS .dpo-hero + .dpo-content { top:30px }
 
   /* ===== State ===== */
   const baseUrl = window.location.href;              // where to return on close
@@ -129,9 +115,7 @@
       .dpo[data-open="true"] .dpo-card{transform:translateY(0) scale(1);opacity:1}
       .dpo-close{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:999px;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.92);backdrop-filter:blur(4px);box-shadow:0 4px 14px rgba(0,0,0,.22);font-size:24px;line-height:1;cursor:pointer;z-index:20;pointer-events:auto}
       .dpo-close:hover{background:rgba(255,255,255,.98)}
-      $1
-      .dpo-article{overscroll-behavior-y:contain; height:100%; overflow:auto; -webkit-overflow-scrolling:touch}
-      .dpo-content{overscroll-behavior-y:contain}
+      .dpo-article{display:block; overflow:auto; -webkit-overflow-scrolling:touch; min-height:0; height:100%; overflow-x:hidden}
       .dpo-header{position:relative;z-index:6;padding:20px 24px 8px;border-bottom:1px solid rgba(0,0,0,.06)}
       .dpo-title{margin:0;font-size:clamp(22px,3.2vw,30px);line-height:1.25}
       .dpo-meta{margin-top:6px;font-size:13px;opacity:.75}
@@ -154,7 +138,7 @@
         z-index:10;      /* sit above the sticky hero */
         margin:0;        /* keep our own block flow */
         /* overlap on load is handled by the sibling rule above */
-        overflow:auto !important;   /* internal scroll when pinned (enforced to beat base .dpo-content) */
+        overflow:auto;   /* internal scroll when pinned */
         -webkit-overflow-scrolling:touch;
         background:#ffffff9e !important;
         width:100%;
@@ -230,8 +214,8 @@
 
     overlay = document.createElement('div');
     overlay.id = 'dpo-overlay';
-    overlay.setAttribute('data-version','102025.11.2.3');
-    try{ console.debug('[DPO] version 102025.11.2.3 loaded'); }catch(e){}
+    overlay.setAttribute('data-version','102025.11.2');
+    try{ console.debug('[DPO] version 102025.11.2 loaded'); }catch(e){}
     overlay.className = 'dpo dpo-hidden' + (USE_SHEET ? ' dpo--sheet' : '') + (HIDE_HEADER ? ' dpo--no-header' : '') + ' dpo--close-in-hero';
     overlay.setAttribute('aria-hidden', 'true');
     overlay.innerHTML = `
@@ -493,40 +477,6 @@
     return res.json();
   }
 
-  /* ===== Scroll handoff (minimal):
-   - Before pin: wheel/touch on .dpo-content scrolls the outer article so the card rides over the hero.
-   - After pin: inner content scrolls; when at top and scrolling up, give control back to article. */
-  function wireScrollHandoff(){
-    if (!overlay || !refs || !refs.contentEl) return;
-    const card    = overlay.querySelector('.dpo-card');
-    const article = overlay.querySelector('.dpo-article');
-    const content = refs.contentEl;
-    if (!card || !article || !content) return;
-
-    const epsilon = 0.5; // geometry slop
-    function stickyThreshold(){ return Math.max(0, content.offsetTop - PIN_OFFSET); }
-    function isPinned(){ return article.scrollTop >= stickyThreshold() - epsilon; }
-    function redirect(dy){ article.scrollTop += dy; }
-
-    // Wheel: desktop
-    content.addEventListener('wheel', (e)=>{
-      if (!isPinned()) { redirect(e.deltaY); e.preventDefault(); return; }
-      const atTop = content.scrollTop <= 0;
-      if (atTop && e.deltaY < 0) { redirect(e.deltaY); e.preventDefault(); }
-    }, { passive:false });
-
-    // Touch: mobile
-    let startY = 0;
-    content.addEventListener('touchstart', (e)=>{ const t=e.changedTouches&&e.changedTouches[0]; if (t) startY = t.clientY; }, { passive:true });
-    content.addEventListener('touchmove', (e)=>{
-      const t = e.changedTouches && e.changedTouches[0]; if (!t) return;
-      const dy = startY - t.clientY; // >0 means dragging up (scrolling down)
-      if (!isPinned()) { redirect(dy); e.preventDefault(); return; }
-      const atTop = content.scrollTop <= 0;
-      if (atTop && dy < 0) { redirect(dy); e.preventDefault(); }
-    }, { passive:false });
-  }
-
   /* ===== Overlay controller ===== */
   function openOverlay({ title, content, meta, urlForGA }){
     refs.titleEl.innerHTML = title || '';
@@ -536,9 +486,6 @@
     refs.contentEl.innerHTML = content || '';
     enhanceEmbeds(refs.contentEl);
     initDiviVideoModules(refs.contentEl);
-    // reset inner scroll and wire one-time handoff per open
-    refs.contentEl.scrollTop = 0;
-    if (!overlay.dataset.handoffWired) { wireScrollHandoff(); overlay.dataset.handoffWired = '1'; }
 
     document.documentElement.classList.add('dpo-lock');
     document.body.classList.add('dpo-lock');
